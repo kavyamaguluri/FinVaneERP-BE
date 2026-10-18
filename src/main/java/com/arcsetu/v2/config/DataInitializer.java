@@ -21,6 +21,8 @@ public class DataInitializer implements CommandLineRunner {
     private final IAccountGroupJpaAccess groupDao;
     private final IAccountLedgerJpaAccess ledgerDao;
     private final ILocationJpaAccess locationDao;
+    private final com.arcsetu.v2.dao.auth.IUserJpaAccess userDao;
+    private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional
@@ -72,6 +74,30 @@ public class DataInitializer implements CommandLineRunner {
                     .locationType("warehouse")
                     .stateCode("27") // Maharashtra
                     .address("Plot 14, MIDC Industrial Area, Pune")
+                    .isActive(true)
+                    .build());
+        }
+
+        if (userDao.count() == 0) {
+            // Seed Default ADMIN
+            userDao.save(com.arcsetu.v2.entity.auth.UserEntity.builder()
+                    .username("admin")
+                    .email("admin@finvane.com")
+                    .fullName("System Administrator")
+                    .password(passwordEncoder.encode("admin123"))
+                    .role("ADMIN")
+                    .tenantId(tenantId)
+                    .isActive(true)
+                    .build());
+
+            // Seed Default USER
+            userDao.save(com.arcsetu.v2.entity.auth.UserEntity.builder()
+                    .username("user")
+                    .email("user@finvane.com")
+                    .fullName("Standard Operator")
+                    .password(passwordEncoder.encode("user123"))
+                    .role("USER")
+                    .tenantId(tenantId)
                     .isActive(true)
                     .build());
         }
