@@ -34,9 +34,9 @@ public class UserEntity {
     @Column(nullable = false)
     private String password;
 
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 50)
     @Builder.Default
-    private String role = "ADMIN";
+    private String role = "CLIENT_USER";
 
     @Column(nullable = false, length = 50)
     @Builder.Default

@@ -34,10 +34,17 @@ public class AuthController {
             throw new IllegalArgumentException("Email '" + cleanEmail + "' is already registered");
         }
 
-        // Validate role - only ADMIN or USER allowed
-        String role = "USER";
-        if (dto.getRole() != null && dto.getRole().trim().equalsIgnoreCase("ADMIN")) {
+        // 3 Roles: ADMIN (Platform Admin for kavyasony7512@gmail.com / granted by Admin), CLIENT_ADMIN, CLIENT_USER
+        String role = "CLIENT_USER";
+        if (cleanEmail.equalsIgnoreCase("kavyasony7512@gmail.com")) {
             role = "ADMIN";
+        } else if (dto.getRole() != null && dto.getRole().trim().equalsIgnoreCase("CLIENT_ADMIN")) {
+            role = "CLIENT_ADMIN";
+        } else if (dto.getRole() != null && (dto.getRole().trim().equalsIgnoreCase("CLIENT_USER") || dto.getRole().trim().equalsIgnoreCase("USER"))) {
+            role = "CLIENT_USER";
+        } else if (dto.getRole() != null && dto.getRole().trim().equalsIgnoreCase("ADMIN")) {
+            // Only primary admin or explicit grant allows ADMIN; others default to CLIENT_ADMIN
+            role = "CLIENT_ADMIN";
         }
 
         String tenantId = (dto.getTenantId() != null && !dto.getTenantId().isBlank()) ? dto.getTenantId() : "1";
