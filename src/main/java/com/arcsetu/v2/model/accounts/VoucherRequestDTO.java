@@ -9,6 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -30,6 +31,7 @@ public class VoucherRequestDTO {
 
     private String narration;
     private String referenceNo;
+    private BigDecimal totalAmount;
 
     @NotEmpty(message = "Voucher must contain at least two entries")
     @Valid
