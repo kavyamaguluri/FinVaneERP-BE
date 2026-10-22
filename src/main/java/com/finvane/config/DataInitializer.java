@@ -67,41 +67,34 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void seedUsers(String tenantId) {
-        // Express users from seed.js
-        upsertUser("admin", "admin@bharaterp.local", "Admin User", "ADMIN", "Admin@12345!", tenantId);
-        upsertUser("accountant", "accountant@bharaterp.local", "Asha Accountant", "ACCOUNTANT", "Accountant@123!", tenantId);
-        upsertUser("approver", "approver@bharaterp.local", "Rohan Approver", "APPROVER", "Approver@123!", tenantId);
-        upsertUser("sales", "sales@bharaterp.local", "Priya Sales", "SALES", "Sales@12345!", tenantId);
-        upsertUser("inventory", "inventory@bharaterp.local", "Vikram Inventory", "INVENTORY_MANAGER", "Inventory@123!", tenantId);
-        upsertUser("payroll", "payroll@bharaterp.local", "Neha Payroll", "PAYROLL_MANAGER", "Payroll@12345!", tenantId);
-        upsertUser("auditor", "auditor@bharaterp.local", "Suresh Auditor", "AUDITOR", "Auditor@12345!", tenantId);
-
-        // Developer admin
+        // System Admin (Kavya)
         upsertUser("kavya_admin", "kavyasony7512@gmail.com", "Kavya Maguluri", "ADMIN", "Finvane@123", tenantId);
+
+        // Standard Administrator
+        upsertUser("admin", "admin@finvane.com", "System Admin", "ADMIN", "Finvane@123", tenantId);
+
+        // Client Admin
+        upsertUser("mukundan", "mukundan0812@gmail.com", "Mukundan", "CLIENT_ADMIN", "Finvane@123", tenantId);
+
+        // Client Users
+        upsertUser("operator", "operator@finvane.com", "Standard Operator", "CLIENT_USER", "Finvane@123", tenantId);
+        upsertUser("accountant", "accountant@finvane.com", "Finance Accountant", "CLIENT_USER", "Finvane@123", tenantId);
     }
 
     private void upsertUser(String username, String email, String fullName, String role, String password, String tenantId) {
-        userDao.findByEmail(email).ifPresentOrElse(
-            existing -> {
-                existing.setUsername(username);
-                existing.setFullName(fullName);
-                existing.setRole(role);
-                existing.setPassword(passwordEncoder.encode(password));
-                existing.setIsActive(true);
-                userDao.save(existing);
-            },
-            () -> {
-                userDao.save(UserEntity.builder()
-                        .username(username)
-                        .email(email)
-                        .fullName(fullName)
-                        .password(passwordEncoder.encode(password))
-                        .role(role)
+        UserEntity user = userDao.findByUsernameOrEmail(username.toLowerCase(), email.toLowerCase())
+                .orElseGet(() -> UserEntity.builder()
+                        .username(username.toLowerCase())
+                        .email(email.toLowerCase())
                         .tenantId(tenantId)
-                        .isActive(true)
                         .build());
-            }
-        );
+        user.setUsername(username.toLowerCase());
+        user.setEmail(email.toLowerCase());
+        user.setFullName(fullName);
+        user.setRole(role);
+        user.setPassword(passwordEncoder.encode(password));
+        user.setIsActive(true);
+        userDao.save(user);
     }
 
     private Map<String, AccountGroupEntity> seedGroups(String tenantId) {
