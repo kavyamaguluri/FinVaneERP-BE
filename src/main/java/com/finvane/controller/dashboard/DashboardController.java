@@ -83,24 +83,14 @@ public class DashboardController {
         }
 
         List<String> months = List.of("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar");
-        List<BigDecimal> monthlySales = List.of(
-            new BigDecimal("450000"), new BigDecimal("520000"), new BigDecimal("610000"),
-            new BigDecimal("580000"), new BigDecimal("720000"), new BigDecimal("690000"),
-            new BigDecimal("750000"), new BigDecimal("800000"), new BigDecimal("850000"),
-            new BigDecimal("920000"), new BigDecimal("960000"), new BigDecimal("1050000")
-        );
-        List<BigDecimal> monthlyExpenses = List.of(
-            new BigDecimal("310000"), new BigDecimal("360000"), new BigDecimal("420000"),
-            new BigDecimal("390000"), new BigDecimal("480000"), new BigDecimal("460000"),
-            new BigDecimal("510000"), new BigDecimal("530000"), new BigDecimal("560000"),
-            new BigDecimal("600000"), new BigDecimal("620000"), new BigDecimal("680000")
-        );
+        List<BigDecimal> monthlySales = new ArrayList<>(Collections.nCopies(12, BigDecimal.ZERO));
+        List<BigDecimal> monthlyExpenses = new ArrayList<>(Collections.nCopies(12, BigDecimal.ZERO));
 
         DashboardMetricsDTO dto = DashboardMetricsDTO.builder()
                 .cashBankBalance(cashBankBalance)
                 .totalReceivables(totalReceivables)
                 .totalPayables(totalPayables)
-                .netProfit(netProfit.compareTo(BigDecimal.ZERO) != 0 ? netProfit : new BigDecimal("880000"))
+                .netProfit(netProfit)
                 .totalLedgers(ledgers.size())
                 .totalParties(parties.size())
                 .totalVouchers(voucherDao.count())

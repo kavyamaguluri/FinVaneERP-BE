@@ -15,7 +15,7 @@ import java.util.Map;
 @Component
 public class JwtUtility {
 
-    @Value("${app.jwt.secret:finvane_jwt_secret_key_arcsetu_2026_super_secure_enterprise_key_min_256_bits!}")
+    @Value("${app.jwt.secret:finvane_jwt_secret_key_2026_super_secure_enterprise_key_min_256_bits!}")
     private String jwtSecret;
 
     @Value("${app.jwt.expiration-ms:86400000}")

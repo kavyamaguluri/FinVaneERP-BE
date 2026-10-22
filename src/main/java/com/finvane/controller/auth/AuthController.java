@@ -34,9 +34,10 @@ public class AuthController {
             throw new IllegalArgumentException("Email '" + cleanEmail + "' is already registered");
         }
 
-        // 3 Roles: ADMIN (Platform Admin for kavyasony7512@gmail.com / granted by Admin), CLIENT_ADMIN, CLIENT_USER
+        // 3 Roles: ADMIN (Platform Admin / granted by Admin), CLIENT_ADMIN, CLIENT_USER
         String role = "CLIENT_USER";
-        if (cleanEmail.equalsIgnoreCase("kavyasony7512@gmail.com")) {
+        String configuredAdminEmail = System.getenv("ADMIN_EMAIL");
+        if (configuredAdminEmail != null && cleanEmail.equalsIgnoreCase(configuredAdminEmail.trim())) {
             role = "ADMIN";
         } else if (dto.getRole() != null && dto.getRole().trim().equalsIgnoreCase("CLIENT_ADMIN")) {
             role = "CLIENT_ADMIN";
