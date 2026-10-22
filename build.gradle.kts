@@ -4,7 +4,7 @@ plugins {
     id("io.spring.dependency-management") version "1.1.7"
 }
 
-group = "com.arcsetu.v2"
+group = "com.finvane"
 version = "2.0.0"
 
 java {

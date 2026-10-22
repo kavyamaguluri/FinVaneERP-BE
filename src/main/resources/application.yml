@@ -8,7 +8,7 @@ spring:
     active: dev
 
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_CONTROL_NAME:finvane_control}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_CONTROL_NAME:finvane_control}?createDatabaseIfNotExist=true&useSSL=${DB_SSL:false}&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata}
     username: ${DB_USER:root}
     password: ${DB_PASS:root_FinVane}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -36,7 +36,7 @@ spring:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:finvane_jwt_secret_key_arcsetu_2026_super_secure_enterprise_key_min_256_bits!}
+    secret: ${JWT_SECRET:finvane_jwt_secret_key_2026_super_secure_enterprise_key_min_256_bits!}
     expiration-ms: 86400000 # 24 hours
   multitenancy:
     schema-prefix: finvane_entity_
@@ -58,6 +58,6 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level - %msg%n"
   level:
     root: INFO
-    com.arcsetu.v2: INFO
-    com.arcsetu.v2.config.ApiLoggingFilter: INFO
+    com.finvane: INFO
+    com.finvane.config.ApiLoggingFilter: INFO
 
