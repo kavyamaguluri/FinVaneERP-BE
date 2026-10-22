@@ -9,9 +9,11 @@ import com.finvane.model.common.ApiResponse;
 import com.finvane.utils.JwtUtility;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v2/auth")
 @RequiredArgsConstructor
@@ -23,37 +25,36 @@ public class AuthController {
 
     @PostMapping("/register")
     public ApiResponse<AuthResponseDTO> register(@Valid @RequestBody RegisterRequestDTO dto) {
-        String cleanUsername = dto.getUsername().trim().toLowerCase();
-        String cleanEmail = dto.getEmail().trim().toLowerCase();
+        String username = dto.getUsername();
+        String email = dto.getEmail();
 
-        if (userDao.existsByUsername(cleanUsername)) {
-            throw new IllegalArgumentException("Username '" + cleanUsername + "' is already registered");
+        if (userDao.existsByUsername(username)) {
+            throw new IllegalArgumentException("Username '" + username + "' is already registered");
         }
 
-        if (userDao.existsByEmail(cleanEmail)) {
-            throw new IllegalArgumentException("Email '" + cleanEmail + "' is already registered");
+        if (userDao.existsByEmail(email)) {
+            throw new IllegalArgumentException("Email '" + email + "' is already registered");
         }
 
         // 3 Roles: ADMIN (Platform Admin / granted by Admin), CLIENT_ADMIN, CLIENT_USER
         String role = "CLIENT_USER";
         String configuredAdminEmail = System.getenv("ADMIN_EMAIL");
-        if (configuredAdminEmail != null && cleanEmail.equalsIgnoreCase(configuredAdminEmail.trim())) {
+        if (configuredAdminEmail != null && configuredAdminEmail.equals(email)) {
             role = "ADMIN";
-        } else if (dto.getRole() != null && dto.getRole().trim().equalsIgnoreCase("CLIENT_ADMIN")) {
+        } else if (dto.getRole() != null && "CLIENT_ADMIN".equalsIgnoreCase(dto.getRole())) {
             role = "CLIENT_ADMIN";
-        } else if (dto.getRole() != null && (dto.getRole().trim().equalsIgnoreCase("CLIENT_USER") || dto.getRole().trim().equalsIgnoreCase("USER"))) {
+        } else if (dto.getRole() != null && ("CLIENT_USER".equalsIgnoreCase(dto.getRole()) || "USER".equalsIgnoreCase(dto.getRole()))) {
             role = "CLIENT_USER";
-        } else if (dto.getRole() != null && dto.getRole().trim().equalsIgnoreCase("ADMIN")) {
-            // Only primary admin or explicit grant allows ADMIN; others default to CLIENT_ADMIN
+        } else if (dto.getRole() != null && "ADMIN".equalsIgnoreCase(dto.getRole())) {
             role = "CLIENT_ADMIN";
         }
 
         String tenantId = (dto.getTenantId() != null && !dto.getTenantId().isBlank()) ? dto.getTenantId() : "1";
 
         UserEntity user = UserEntity.builder()
-                .username(cleanUsername)
-                .email(cleanEmail)
-                .fullName(dto.getFullName().trim())
+                .username(username)
+                .email(email)
+                .fullName(dto.getFullName())
                 .password(passwordEncoder.encode(dto.getPassword()))
                 .role(role)
                 .tenantId(tenantId)
@@ -80,7 +81,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public ApiResponse<AuthResponseDTO> login(@Valid @RequestBody LoginRequestDTO dto) {
-        String identifier = dto.getUsername().trim().toLowerCase();
+        String identifier = dto.getUsername();
 
         UserEntity user = userDao.findByUsernameOrEmail(identifier, identifier)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));
