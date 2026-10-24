@@ -48,7 +48,7 @@ public class EntityController {
 
     @PostMapping
     public ApiResponse<EntityEntity> createEntity(@RequestBody EntityEntity entity) {
-        if (entity.getTenantId() == null || entity.getTenantId().isBlank()) {
+        if (entity.getTenantId() == null || entity.getTenantId().isBlank() || "1".equals(entity.getTenantId())) {
             entity.setTenantId(String.valueOf(System.currentTimeMillis()));
         }
         entity.setIsActive(true);
@@ -71,6 +71,22 @@ public class EntityController {
             existing.setLegalName(req.getLegalName());
             existing.setSector(req.getSector());
             existing.setBusinessType(req.getBusinessType());
+            existing.setPan(req.getPan());
+            existing.setGstRegistered(req.getGstRegistered());
+            existing.setGstin(req.getGstin());
+            existing.setConstitution(req.getConstitution());
+            existing.setAddress(req.getAddress());
+            existing.setStateCode(req.getStateCode());
+            existing.setCountry(req.getCountry());
+            existing.setBankName(req.getBankName());
+            existing.setBankAccountName(req.getBankAccountName());
+            existing.setBankAccountNo(req.getBankAccountNo());
+            existing.setBankIfsc(req.getBankIfsc());
+            existing.setBankBranch(req.getBankBranch());
+            existing.setUpiId(req.getUpiId());
+            existing.setDateOfCommencement(req.getDateOfCommencement());
+            existing.setBooksStartDate(req.getBooksStartDate());
+            existing.setFyStartMonth(req.getFyStartMonth());
             EntityEntity updated = entityDao.save(existing);
 
             auditLogDao.save(AuditLogEntity.builder()
