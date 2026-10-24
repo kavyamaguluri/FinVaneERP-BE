@@ -82,18 +82,61 @@ public class DashboardController {
             }
         }
 
+        // If receivables still zero, check 1200 / Debtors ledger
+        if (totalReceivables.compareTo(BigDecimal.ZERO) == 0) {
+            for (AccountLedgerEntity l : ledgers) {
+                if ("1200".equals(l.getCode()) || l.getName().toLowerCase().contains("receivable")) {
+                    BigDecimal bal = l.getCurrentBalance() != null ? l.getCurrentBalance() : BigDecimal.ZERO;
+                    if (bal.compareTo(BigDecimal.ZERO) > 0) {
+                        totalReceivables = totalReceivables.add(bal);
+                    }
+                }
+            }
+        }
+
+        BigDecimal netWorkingCapital = cashBankBalance.add(totalReceivables).subtract(totalPayables);
+
         List<String> months = List.of("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar");
         List<BigDecimal> monthlySales = new ArrayList<>(Collections.nCopies(12, BigDecimal.ZERO));
         List<BigDecimal> monthlyExpenses = new ArrayList<>(Collections.nCopies(12, BigDecimal.ZERO));
+
+        // Aggregate monthly sales & expenses from vouchers
+        Map<Long, AccountLedgerEntity> ledgerMap = ledgers.stream()
+                .collect(Collectors.toMap(AccountLedgerEntity::getId, l -> l, (a, b) -> a));
+
+        List<com.finvane.entity.accounts.VoucherEntity> tenantVouchers = voucherDao.findByTenantId(tenantId);
+        for (com.finvane.entity.accounts.VoucherEntity v : tenantVouchers) {
+            if (v.getVoucherDate() == null) continue;
+            int m = v.getVoucherDate().getMonthValue();
+            int mIdx = (m >= 4) ? (m - 4) : (m + 8);
+            if (mIdx < 0 || mIdx >= 12) continue;
+
+            if (v.getItems() != null) {
+                for (com.finvane.entity.accounts.VoucherItemEntity vi : v.getItems()) {
+                    AccountLedgerEntity l = ledgerMap.get(vi.getLedgerId());
+                    if (l != null && vi.getAmount() != null) {
+                        AccountGroupEntity grp = groupMap.get(l.getGroupId());
+                        if (grp != null) {
+                            if ("INCOME".equalsIgnoreCase(grp.getNature())) {
+                                monthlySales.set(mIdx, monthlySales.get(mIdx).add(vi.getAmount()));
+                            } else if ("EXPENSE".equalsIgnoreCase(grp.getNature())) {
+                                monthlyExpenses.set(mIdx, monthlyExpenses.get(mIdx).add(vi.getAmount()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         DashboardMetricsDTO dto = DashboardMetricsDTO.builder()
                 .cashBankBalance(cashBankBalance)
                 .totalReceivables(totalReceivables)
                 .totalPayables(totalPayables)
+                .netWorkingCapital(netWorkingCapital)
                 .netProfit(netProfit)
                 .totalLedgers(ledgers.size())
                 .totalParties(parties.size())
-                .totalVouchers(voucherDao.count())
+                .totalVouchers(voucherDao.countByTenantId(tenantId))
                 .chartMonths(months)
                 .monthlySales(monthlySales)
                 .monthlyExpenses(monthlyExpenses)

@@ -29,4 +29,8 @@ public interface IVoucherJpaAccess extends JpaRepository<VoucherEntity, Long> {
 
     @Query("SELECT COUNT(v) FROM VoucherEntity v WHERE v.tenantId = :tenantId AND v.voucherType = :voucherType")
     long countByTenantIdAndVoucherType(@Param("tenantId") String tenantId, @Param("voucherType") String voucherType);
+
+    long countByTenantId(String tenantId);
+
+    java.util.List<VoucherEntity> findByTenantId(String tenantId);
 }

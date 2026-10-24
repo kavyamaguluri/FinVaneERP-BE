@@ -14,6 +14,7 @@ public class DashboardMetricsDTO {
     private BigDecimal cashBankBalance;
     private BigDecimal totalReceivables;
     private BigDecimal totalPayables;
+    private BigDecimal netWorkingCapital;
     private BigDecimal netProfit;
     private long totalLedgers;
     private long totalParties;
