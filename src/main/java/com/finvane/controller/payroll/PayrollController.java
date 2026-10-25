@@ -369,12 +369,48 @@ public class PayrollController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
         String tenantId = TenantContext.getTenantId();
+
+        if (from == null || from.isBlank()) {
+            from = "2024-04-01";
+        }
+        if (to == null || to.isBlank()) {
+            to = LocalDate.now().toString();
+        }
+
+        int fromYm = 202404;
+        try {
+            String[] fParts = from.split("-");
+            fromYm = Integer.parseInt(fParts[0]) * 100 + Integer.parseInt(fParts[1]);
+        } catch (Exception ignored) {}
+
+        int toYm = 202612;
+        try {
+            String[] tParts = to.split("-");
+            toYm = Integer.parseInt(tParts[0]) * 100 + Integer.parseInt(tParts[1]);
+        } catch (Exception ignored) {}
+
+        final int startYm = fromYm;
+        final int endYm = toYm;
+
         List<PayrollRunEntity> runs = payrollRunDao.findByTenantIdOrderByPeriodYearDescPeriodMonthDesc(tenantId)
-                .stream().filter(r -> "processed".equalsIgnoreCase(r.getStatus())).toList();
+                .stream()
+                .filter(r -> "processed".equalsIgnoreCase(r.getStatus()))
+                .filter(r -> {
+                    int ym = r.getPeriodYear() * 100 + r.getPeriodMonth();
+                    return ym >= startYm && ym <= endYm;
+                })
+                .sorted(Comparator.comparingInt(r -> r.getPeriodYear() * 100 + r.getPeriodMonth()))
+                .toList();
+
+        Set<Long> filteredRunIds = runs.stream().map(PayrollRunEntity::getId).collect(Collectors.toSet());
 
         List<PayslipEntity> allSlips = payslipDao.findByTenantId(tenantId);
-        Map<Long, List<PayslipEntity>> slipsByRun = allSlips.stream().collect(Collectors.groupingBy(PayslipEntity::getPayrollRunId));
-        Map<Long, List<PayslipEntity>> slipsByEmp = allSlips.stream().collect(Collectors.groupingBy(PayslipEntity::getEmployeeId));
+        List<PayslipEntity> filteredSlips = allSlips.stream()
+                .filter(s -> filteredRunIds.contains(s.getPayrollRunId()))
+                .toList();
+
+        Map<Long, List<PayslipEntity>> slipsByRun = filteredSlips.stream().collect(Collectors.groupingBy(PayslipEntity::getPayrollRunId));
+        Map<Long, List<PayslipEntity>> slipsByEmp = filteredSlips.stream().collect(Collectors.groupingBy(PayslipEntity::getEmployeeId));
         Map<Long, EmployeeEntity> empMap = employeeDao.findByTenantIdOrderByNameAsc(tenantId).stream()
                 .collect(Collectors.toMap(EmployeeEntity::getId, e -> e, (a, b) -> a));
 
@@ -421,13 +457,14 @@ public class PayrollController {
             BigDecimal pf = slips.stream().map(s -> s.getPf() != null ? s.getPf() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal tds = slips.stream().map(s -> s.getTds() != null ? s.getTds() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal net = slips.stream().map(s -> s.getNetPay() != null ? s.getNetPay() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
+            long monthsPaid = slips.stream().map(PayslipEntity::getPayrollRunId).distinct().count();
 
             byEmp.add(PayrollReportDTO.EmployeePayrollSummary.builder()
                     .id(entry.getKey())
                     .name(emp != null ? emp.getName() : "Employee #" + entry.getKey())
                     .designation(emp != null ? emp.getDesignation() : "")
                     .gender(emp != null ? emp.getGender() : "")
-                    .monthsPaid((long) slips.size())
+                    .monthsPaid(monthsPaid)
                     .totalGross(gross)
                     .totalPf(pf)
                     .totalTds(tds)
