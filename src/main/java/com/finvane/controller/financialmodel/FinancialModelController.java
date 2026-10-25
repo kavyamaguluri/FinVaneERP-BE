@@ -766,15 +766,15 @@ public class FinancialModelController {
     private BigDecimal stockValueAsOf(String tenantId, String asOfDate) {
         try {
             List<Map<String, Object>> lots = jdbcTemplate.queryForList(
-                    "SELECT id, qty_in, rate FROM stock_lots WHERE tenant_id = ? AND lot_date <= ?",
-                    tenantId, asOfDate
+                    "SELECT id, qty_in, rate FROM stock_lots WHERE lot_date <= ?",
+                    asOfDate
             );
             if (lots.isEmpty()) return BigDecimal.ZERO;
 
             List<Map<String, Object>> consumedRows = jdbcTemplate.queryForList(
                     "SELECT lot_id, SUM(consumed_qty) as consumed FROM stock_lot_consumptions " +
-                    "WHERE tenant_id = ? AND sale_date <= ? AND lot_id IS NOT NULL GROUP BY lot_id",
-                    tenantId, asOfDate
+                    "WHERE sale_date <= ? AND lot_id IS NOT NULL GROUP BY lot_id",
+                    asOfDate
             );
             Map<Long, Double> consumedMap = new HashMap<>();
             for (Map<String, Object> cr : consumedRows) {
