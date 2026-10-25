@@ -46,7 +46,7 @@ public class DashboardMetricsDTO {
     private List<BigDecimal> payablesAging;
     private List<BigDecimal> inventoryAging;
     private Long headcountNow;
-    private Long avgHeadcountPeriod;
+    private BigDecimal avgHeadcountPeriod;
     private BigDecimal attritionRate;
     private Long exitsInPeriod;
     private BigDecimal periodicalPayrollCost;

@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
@@ -197,6 +199,41 @@ public class DashboardController {
         BigDecimal grossProfit = totalSales.subtract(totalPurchases);
         BigDecimal netProfit = grossProfit.subtract(otherExpenses);
 
+        BigDecimal serviceRevenue = BigDecimal.ZERO;
+        if (!"2".equals(tenantId)) {
+            try {
+                serviceRevenue = queryBigDecimal(
+                        "SELECT COALESCE(SUM(il.amount), 0) FROM invoice_lines il " +
+                        "JOIN invoices i ON i.id = il.invoice_id " +
+                        "JOIN items it ON it.id = il.item_id " +
+                        "WHERE i.tenant_id = ? AND i.invoice_type = 'sales' AND i.status = 'posted' " +
+                        "  AND it.item_type = 'service' AND i.invoice_date BETWEEN ? AND ?",
+                        tenantId, fromDateStr, toDateStr
+                );
+            } catch (Exception ignored) {}
+        } else {
+            serviceRevenue = totalSales;
+        }
+
+        BigDecimal goodsRevenue = totalSales.subtract(serviceRevenue);
+        if (goodsRevenue.compareTo(BigDecimal.ZERO) < 0) {
+            goodsRevenue = BigDecimal.ZERO;
+        }
+
+        Long goodsQtySold = 0L;
+        if (!"2".equals(tenantId)) {
+            try {
+                goodsQtySold = queryLong(
+                        "SELECT COALESCE(SUM(il.qty), 0) FROM invoice_lines il " +
+                        "JOIN invoices i ON i.id = il.invoice_id " +
+                        "JOIN items it ON it.id = il.item_id " +
+                        "WHERE i.tenant_id = ? AND i.invoice_type = 'sales' AND i.status = 'posted' " +
+                        "  AND it.item_type = 'goods' AND i.invoice_date BETWEEN ? AND ?",
+                        tenantId, fromDateStr, toDateStr
+                );
+            } catch (Exception ignored) {}
+        }
+
         BigDecimal cogsInPeriod = BigDecimal.ZERO;
         if (!"2".equals(tenantId)) {
             try {
@@ -295,9 +332,8 @@ public class DashboardController {
             inventoryAging = List.of(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(1557500), BigDecimal.valueOf(5898250), BigDecimal.valueOf(10797950));
         }
 
-        // 11. Top selling goods and qty sold
+        // 11. Top selling goods
         List<DashboardMetricsDTO.TopSellingItemDTO> topSellingItems = new ArrayList<>();
-        Long goodsQtySold = 0L;
         if (!"2".equals(tenantId)) {
             try {
                 List<Map<String, Object>> topRows = jdbcTemplate.queryForList(
@@ -305,7 +341,7 @@ public class DashboardController {
                         "FROM invoice_lines il " +
                         "JOIN invoices i ON i.id = il.invoice_id " +
                         "JOIN items it ON it.id = il.item_id " +
-                        "WHERE i.tenant_id = ? AND i.invoice_type = 'sales' AND it.item_type = 'goods' " +
+                        "WHERE i.tenant_id = ? AND i.invoice_type = 'sales' AND i.status = 'posted' AND it.item_type = 'goods' " +
                         "  AND i.invoice_date BETWEEN ? AND ? " +
                         "GROUP BY it.id, it.name, it.sku, it.category " +
                         "ORDER BY revenue DESC LIMIT 8",
@@ -321,7 +357,6 @@ public class DashboardController {
                             .qtySold(qty != null ? BigDecimal.valueOf(qty.doubleValue()) : BigDecimal.ZERO)
                             .revenue(rev != null ? BigDecimal.valueOf(rev.doubleValue()) : BigDecimal.ZERO)
                             .build());
-                    if (qty != null) goodsQtySold += qty.longValue();
                 }
             } catch (Exception e) {
                 log.warn("Error fetching topSellingItems: {}", e.getMessage());
@@ -384,27 +419,105 @@ public class DashboardController {
         }
 
         // 13. HR metrics
-        long headcountNow = "2".equals(tenantId) ? 0L : 14L;
-        long avgHeadcountPeriod = "2".equals(tenantId) ? 0L : 14L;
-        long exitsInPeriod = 0L;
-        BigDecimal attritionRate = null;
-        BigDecimal periodicalPayrollCost = "2".equals(tenantId) ? BigDecimal.ZERO : BigDecimal.valueOf(11473000);
-        BigDecimal avgPayrollCost = "2".equals(tenantId) ? null : BigDecimal.valueOf(819500);
-        int payrollRunCount = "2".equals(tenantId) ? 0 : 29;
-
-        long maleCount = "2".equals(tenantId) ? 0L : 10L;
-        long femaleCount = "2".equals(tenantId) ? 0L : 5L;
-        BigDecimal malePercent = BigDecimal.valueOf(66.7);
-        BigDecimal femalePercent = BigDecimal.valueOf(33.3);
-
-        List<DashboardMetricsDTO.HeadcountTrendDTO> headcountTrend = List.of(
-                new DashboardMetricsDTO.HeadcountTrendDTO("May 26", 14L),
-                new DashboardMetricsDTO.HeadcountTrendDTO("Jun 26", 14L),
-                new DashboardMetricsDTO.HeadcountTrendDTO("Jul 26", 14L),
-                new DashboardMetricsDTO.HeadcountTrendDTO("Aug 26", 14L),
-                new DashboardMetricsDTO.HeadcountTrendDTO("Sep 26", 14L),
-                new DashboardMetricsDTO.HeadcountTrendDTO("Oct 26", 14L)
+        long headcountStart = queryLong(
+                "SELECT COUNT(*) FROM employees WHERE tenant_id = ? AND date_of_joining IS NOT NULL AND date_of_joining <= ? AND (date_of_exit IS NULL OR date_of_exit > ?)",
+                tenantId, fromDateStr, fromDateStr
         );
+        long headcountEnd = queryLong(
+                "SELECT COUNT(*) FROM employees WHERE tenant_id = ? AND date_of_joining IS NOT NULL AND date_of_joining <= ? AND (date_of_exit IS NULL OR date_of_exit > ?)",
+                tenantId, toDateStr, toDateStr
+        );
+        long exitsInPeriod = queryLong(
+                "SELECT COUNT(*) FROM employees WHERE tenant_id = ? AND date_of_exit BETWEEN ? AND ?",
+                tenantId, fromDateStr, toDateStr
+        );
+
+        long headcountNow = "2".equals(tenantId) ? 0L : headcountEnd;
+        BigDecimal avgHeadcountPeriod = "2".equals(tenantId) ? BigDecimal.ZERO :
+                BigDecimal.valueOf(headcountStart + headcountEnd).divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+        BigDecimal attritionRate = null;
+        if (avgHeadcountPeriod.compareTo(BigDecimal.ZERO) > 0 && exitsInPeriod > 0) {
+            attritionRate = BigDecimal.valueOf(exitsInPeriod)
+                    .multiply(BigDecimal.valueOf(100))
+                    .divide(avgHeadcountPeriod, 2, RoundingMode.HALF_UP);
+        }
+
+        int payrollRunCount = 0;
+        BigDecimal periodicalPayrollCost = BigDecimal.ZERO;
+        if (!"2".equals(tenantId)) {
+            try {
+                payrollRunCount = (int) queryLong(
+                        "SELECT COUNT(*) FROM payroll_runs WHERE tenant_id = ? AND status = 'processed' " +
+                        "  AND CONCAT(period_year, '-', LPAD(period_month, 2, '0'), '-01') BETWEEN ? AND ?",
+                        tenantId, fromDateStr.substring(0, 7) + "-01", toDateStr
+                );
+
+                periodicalPayrollCost = queryBigDecimal(
+                        "SELECT COALESCE(SUM(ps.gross), 0) FROM payslips ps " +
+                        "JOIN payroll_runs pr ON pr.id = ps.payroll_run_id " +
+                        "WHERE pr.tenant_id = ? AND pr.status = 'processed' " +
+                        "  AND CONCAT(pr.period_year, '-', LPAD(pr.period_month, 2, '0'), '-01') BETWEEN ? AND ?",
+                        tenantId, fromDateStr.substring(0, 7) + "-01", toDateStr
+                );
+            } catch (Exception e) {
+                log.warn("Error calculating payroll metrics: {}", e.getMessage());
+            }
+        }
+
+        BigDecimal avgPayrollCost = null;
+        if (avgHeadcountPeriod.compareTo(BigDecimal.ZERO) > 0 && periodicalPayrollCost.compareTo(BigDecimal.ZERO) > 0) {
+            avgPayrollCost = periodicalPayrollCost.divide(avgHeadcountPeriod, 2, RoundingMode.HALF_UP);
+        }
+
+        long maleCount = 0L;
+        long femaleCount = 0L;
+        BigDecimal malePercent = null;
+        BigDecimal femalePercent = null;
+        if (!"2".equals(tenantId)) {
+            try {
+                Map<String, Object> gRow = jdbcTemplate.queryForMap(
+                        "SELECT " +
+                        "  COALESCE(SUM(CASE WHEN gender = 'male' THEN 1 ELSE 0 END), 0) as male, " +
+                        "  COALESCE(SUM(CASE WHEN gender = 'female' THEN 1 ELSE 0 END), 0) as female, " +
+                        "  COALESCE(SUM(CASE WHEN gender = 'other' THEN 1 ELSE 0 END), 0) as other " +
+                        "FROM employees " +
+                        "WHERE tenant_id = ? AND date_of_joining IS NOT NULL AND date_of_joining <= ? AND (date_of_exit IS NULL OR date_of_exit > ?)",
+                        tenantId, toDateStr, toDateStr
+                );
+                Number m = (Number) gRow.get("male");
+                Number f = (Number) gRow.get("female");
+                Number o = (Number) gRow.get("other");
+                maleCount = m != null ? m.longValue() : 0L;
+                femaleCount = f != null ? f.longValue() : 0L;
+                long total = maleCount + femaleCount + (o != null ? o.longValue() : 0L);
+                if (total > 0) {
+                    malePercent = BigDecimal.valueOf(maleCount * 100.0 / total).setScale(1, RoundingMode.HALF_UP);
+                    femalePercent = BigDecimal.valueOf(femaleCount * 100.0 / total).setScale(1, RoundingMode.HALF_UP);
+                }
+            } catch (Exception e) {
+                log.warn("Error calculating gender mix: {}", e.getMessage());
+            }
+        }
+
+        List<DashboardMetricsDTO.HeadcountTrendDTO> headcountTrend = new ArrayList<>();
+        if (!"2".equals(tenantId)) {
+            try {
+                YearMonth curYm = YearMonth.from(toDate);
+                DateTimeFormatter labelFmt = DateTimeFormatter.ofPattern("MMM yy", Locale.ENGLISH);
+                for (int i = 5; i >= 0; i--) {
+                    YearMonth ym = curYm.minusMonths(i);
+                    LocalDate endOfMonth = ym.atEndOfMonth();
+                    String asOfDateStr = endOfMonth.toString();
+                    long hc = queryLong(
+                            "SELECT COUNT(*) FROM employees WHERE tenant_id = ? AND date_of_joining IS NOT NULL AND date_of_joining <= ? AND (date_of_exit IS NULL OR date_of_exit > ?)",
+                            tenantId, asOfDateStr, asOfDateStr
+                    );
+                    headcountTrend.add(new DashboardMetricsDTO.HeadcountTrendDTO(endOfMonth.format(labelFmt), hc));
+                }
+            } catch (Exception e) {
+                log.warn("Error calculating headcount trend: {}", e.getMessage());
+            }
+        }
 
         // 14. Budget
         DashboardMetricsDTO.BudgetSummaryDTO budget = DashboardMetricsDTO.BudgetSummaryDTO.builder()
@@ -432,8 +545,8 @@ public class DashboardController {
                 .dpo(dpo)
                 .dio(dio)
                 .c2c(c2c)
-                .goodsRevenue(totalSales)
-                .serviceRevenue("2".equals(tenantId) ? totalSales : BigDecimal.ZERO)
+                .goodsRevenue(goodsRevenue)
+                .serviceRevenue(serviceRevenue)
                 .goodsQtySold(goodsQtySold)
                 .periodDays(periodDays)
                 .pendingApprovals(0)
@@ -473,6 +586,15 @@ public class DashboardController {
             return res != null ? res : BigDecimal.ZERO;
         } catch (Exception e) {
             return BigDecimal.ZERO;
+        }
+    }
+
+    private long queryLong(String sql, Object... args) {
+        try {
+            Long res = jdbcTemplate.queryForObject(sql, Long.class, args);
+            return res != null ? res : 0L;
+        } catch (Exception e) {
+            return 0L;
         }
     }
 }
