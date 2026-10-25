@@ -27,4 +27,7 @@ public class ItemDTO {
     private BigDecimal reorderLevel;
     private String itemClass;
     private Long isActive;
+    private BigDecimal currentStock;
+    private BigDecimal margin;
+    private BigDecimal marginPercent;
 }

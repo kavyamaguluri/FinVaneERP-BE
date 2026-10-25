@@ -11,9 +11,13 @@ import com.finvane.model.common.TenantContext;
 import com.finvane.model.inventory.DirectStockDTO;
 import com.finvane.model.inventory.ItemDTO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -26,19 +30,57 @@ public class InventoryController {
     private final IItemJpaAccess itemDao;
     private final IDirectStockJpaAccess directStockDao;
     private final ILocationJpaAccess locationDao;
+    private final JdbcTemplate jdbcTemplate;
 
     // --- ITEMS ---
 
     @GetMapping("/items")
     public ApiResponse<List<ItemDTO>> getItems(@RequestParam(required = false) String itemType) {
         String tenantId = TenantContext.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) tenantId = "1";
+
+        String stockSql = "SELECT item_id, SUM(balance_qty) as total FROM (" +
+                "  SELECT item_id, location_id, balance_qty, ROW_NUMBER() OVER (PARTITION BY location_id, item_id ORDER BY id DESC) rn " +
+                "  FROM stock_ledger WHERE tenant_id = ?" +
+                ") latest WHERE latest.rn = 1 GROUP BY item_id";
+
+        Map<Long, BigDecimal> stockMap = new HashMap<>();
+        try {
+            List<Map<String, Object>> stockRows = jdbcTemplate.queryForList(stockSql, tenantId);
+            for (Map<String, Object> r : stockRows) {
+                Number iid = (Number) r.get("item_id");
+                Number tot = (Number) r.get("total");
+                if (iid != null && tot != null) {
+                    stockMap.put(iid.longValue(), new BigDecimal(tot.toString()));
+                }
+            }
+        } catch (Exception ignored) {}
+
         List<ItemEntity> list;
         if (itemType != null && !itemType.isBlank()) {
             list = itemDao.findByTenantIdAndItemTypeAndIsActiveOrderByNameAsc(tenantId, itemType.toLowerCase(), 1L);
         } else {
             list = itemDao.findByTenantIdAndIsActiveOrderByNameAsc(tenantId, 1L);
         }
-        return ApiResponse.ok(list.stream().map(this::toItemDTO).toList());
+
+        return ApiResponse.ok(list.stream().map(e -> {
+            ItemDTO dto = toItemDTO(e);
+            if ("service".equalsIgnoreCase(e.getItemType())) {
+                dto.setCurrentStock(null);
+            } else {
+                dto.setCurrentStock(stockMap.getOrDefault(e.getId(), e.getOpeningStock()));
+            }
+            BigDecimal p = e.getPurchasePrice() != null ? e.getPurchasePrice() : BigDecimal.ZERO;
+            BigDecimal s = e.getSalePrice() != null ? e.getSalePrice() : BigDecimal.ZERO;
+            BigDecimal m = s.subtract(p);
+            dto.setMargin(m);
+            if (s.compareTo(BigDecimal.ZERO) > 0) {
+                dto.setMarginPercent(m.multiply(BigDecimal.valueOf(100)).divide(s, 2, RoundingMode.HALF_UP));
+            } else {
+                dto.setMarginPercent(BigDecimal.valueOf(100.00));
+            }
+            return dto;
+        }).toList());
     }
 
     @PostMapping("/items")
