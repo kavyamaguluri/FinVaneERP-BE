@@ -24,7 +24,13 @@ public class TenantFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String tenantId = request.getHeader(TENANT_HEADER);
         if (tenantId == null || tenantId.isBlank()) {
+            tenantId = request.getHeader("X-Tenant-ID");
+        }
+        if (tenantId == null || tenantId.isBlank()) {
             tenantId = request.getParameter("entityId");
+        }
+        if (tenantId == null || tenantId.isBlank()) {
+            tenantId = request.getParameter("tenantId");
         }
         if (tenantId == null || tenantId.isBlank()) {
             tenantId = "1"; // Default entity profile
