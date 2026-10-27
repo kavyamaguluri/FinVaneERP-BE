@@ -35,6 +35,7 @@ public class ReportController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
         String tenantId = TenantContext.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) tenantId = "1";
         if (from == null || from.isBlank()) from = "2026-04-01";
         if (to == null || to.isBlank()) to = "2027-03-31";
 
@@ -128,6 +129,7 @@ public class ReportController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
         String tenantId = TenantContext.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) tenantId = "1";
         if (from == null || from.isBlank()) from = "2026-04-01";
         if (to == null || to.isBlank()) to = "2027-03-31";
 
@@ -184,6 +186,7 @@ public class ReportController {
     @GetMapping("/balance-sheet")
     public ApiResponse<BalanceSheetDTO> getBalanceSheet(@RequestParam(required = false) String to) {
         String tenantId = TenantContext.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) tenantId = "1";
         if (to == null || to.isBlank()) to = LocalDate.now().toString();
 
         List<AccountLedgerEntity> ledgers = ledgerDao.findByTenantIdAndIsActiveTrueOrderByNameAsc(tenantId);
@@ -228,6 +231,7 @@ public class ReportController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
         String tenantId = TenantContext.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) tenantId = "1";
         if (from == null || from.isBlank()) from = "2026-04-01";
         if (to == null || to.isBlank()) to = "2027-03-31";
 
@@ -267,6 +271,7 @@ public class ReportController {
     @GetMapping("/financials")
     public ApiResponse<FinancialsSchedule3DTO> getFinancialsSchedule3(@RequestParam(required = false) String to) {
         String tenantId = TenantContext.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) tenantId = "1";
         Optional<EntityEntity> ent = entityDao.findById(Long.parseLong(tenantId));
         String name = ent.isPresent() ? ent.get().getName() : "Enterprise";
         String cin = "U72200MH2026PTC123456";
