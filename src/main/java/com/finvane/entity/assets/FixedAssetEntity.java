@@ -64,6 +64,30 @@ public class FixedAssetEntity {
     @Builder.Default
     private BigDecimal accumulatedDepreciation = BigDecimal.ZERO;
 
+    @Column(name = "branch_name")
+    private String branchName;
+
+    @Column(name = "co_act_block")
+    private String coActBlock;
+
+    @Column(name = "it_act_block")
+    private String itActBlock;
+
+    @Column(name = "payment_mode")
+    private String paymentMode;
+
+    @Column(name = "wdv_rate", precision = 15, scale = 2)
+    private BigDecimal wdvRate;
+
+    @Column(name = "co_act_accum_depreciation", precision = 15, scale = 2)
+    private BigDecimal coActAccumDepreciation;
+
+    @Column(name = "it_act_accum_depreciation", precision = 15, scale = 2)
+    private BigDecimal itActAccumDepreciation;
+
+    @Column(name = "acquisition_voucher_id")
+    private Long acquisitionVoucherId;
+
     @Column(name = "status")
     @Builder.Default
     private String status = "active";

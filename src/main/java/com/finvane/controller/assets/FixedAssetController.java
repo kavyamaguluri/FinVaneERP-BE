@@ -36,15 +36,23 @@ public class FixedAssetController {
     @GetMapping
     public ApiResponse<List<FixedAssetEntity>> getAssets() {
         String tenantId = TenantContext.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) tenantId = "1";
         return ApiResponse.ok(assetDao.findByTenantIdOrderByNameAsc(tenantId));
     }
 
     @PostMapping
     public ApiResponse<FixedAssetEntity> createAsset(@RequestBody FixedAssetEntity entity) {
         String tenantId = TenantContext.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) tenantId = "1";
         long count = assetDao.countByTenantId(tenantId);
         if (entity.getAssetCode() == null || entity.getAssetCode().isBlank()) {
-            entity.setAssetCode(String.format("FA-%04d", count + 1));
+            entity.setAssetCode(String.format("FA-%03d", count + 1));
+        }
+        if (entity.getSalvageValue() == null && entity.getCost() != null) {
+            entity.setSalvageValue(entity.getCost().multiply(BigDecimal.valueOf(0.05)).setScale(2, RoundingMode.HALF_UP));
+        }
+        if (entity.getDatePutToUse() == null || entity.getDatePutToUse().isBlank()) {
+            entity.setDatePutToUse(entity.getPurchaseDate());
         }
         entity.setTenantId(tenantId);
         entity.setStatus("active");
@@ -55,6 +63,7 @@ public class FixedAssetController {
     @GetMapping("/depreciation-runs")
     public ApiResponse<List<AssetDepreciationRunEntity>> getDepreciationRuns() {
         String tenantId = TenantContext.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) tenantId = "1";
         return ApiResponse.ok(depRunDao.findByTenantIdOrderByPeriodYearDescPeriodMonthDesc(tenantId));
     }
 
@@ -62,6 +71,7 @@ public class FixedAssetController {
     @Transactional
     public ApiResponse<AssetDepreciationRunEntity> runDepreciation(@RequestParam int month, @RequestParam int year) {
         String tenantId = TenantContext.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) tenantId = "1";
         List<FixedAssetEntity> assets = assetDao.findByTenantIdOrderByNameAsc(tenantId);
 
         BigDecimal totalDep = BigDecimal.ZERO;
