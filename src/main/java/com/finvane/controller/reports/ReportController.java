@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import org.springframework.jdbc.core.JdbcTemplate;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,76 +31,180 @@ public class ReportController {
     private final IAccountGroupJpaAccess groupDao;
     private final IVoucherJpaAccess voucherDao;
     private final IEntityJpaAccess entityDao;
+    private final JdbcTemplate jdbcTemplate;
+
+    private static class LedgerBalanceRecord {
+        Long id;
+        String code;
+        String name;
+        String nature;
+        String primaryGroupName;
+        String secondaryGroupName;
+        BigDecimal openingBalance;
+        BigDecimal totalDebit;
+        BigDecimal totalCredit;
+        BigDecimal balance; // totalDebit - totalCredit
+    }
+
+    private Map<Long, LedgerBalanceRecord> fetchPostedBalances(String tenantId, String startDate, String endDate) {
+        String sql = """
+            SELECT 
+                al.id, al.code, al.name, ag.nature,
+                COALESCE(pg.name, ag.name) AS primary_group_name,
+                CASE WHEN ag.parent_id IS NOT NULL THEN ag.name ELSE NULL END AS secondary_group_name,
+                COALESCE(al.opening_balance, 0) AS opening_balance,
+                COALESCE(SUM(CASE WHEN v.id IS NOT NULL AND vi.entry_type = 'DEBIT' THEN vi.amount ELSE 0 END), 0) AS total_debit,
+                COALESCE(SUM(CASE WHEN v.id IS NOT NULL AND vi.entry_type = 'CREDIT' THEN vi.amount ELSE 0 END), 0) AS total_credit
+            FROM account_ledgers al
+            JOIN account_groups ag ON ag.id = al.group_id
+            LEFT JOIN account_groups pg ON pg.id = ag.parent_id
+            LEFT JOIN voucher_items vi ON vi.ledger_id = al.id
+            LEFT JOIN vouchers v ON v.id = vi.voucher_id AND v.tenant_id = ? AND v.voucher_date BETWEEN ? AND ?
+            WHERE al.tenant_id = ? AND al.is_active = 1
+            GROUP BY al.id, al.code, al.name, ag.nature, pg.name, ag.parent_id, ag.name, al.opening_balance
+            ORDER BY al.code
+        """;
+
+        Map<Long, LedgerBalanceRecord> map = new LinkedHashMap<>();
+        jdbcTemplate.query(sql, rs -> {
+            LedgerBalanceRecord rec = new LedgerBalanceRecord();
+            rec.id = rs.getLong("id");
+            rec.code = rs.getString("code");
+            rec.name = rs.getString("name");
+            rec.nature = rs.getString("nature");
+            rec.primaryGroupName = rs.getString("primary_group_name");
+            rec.secondaryGroupName = rs.getString("secondary_group_name");
+            rec.openingBalance = rs.getBigDecimal("opening_balance");
+            rec.totalDebit = rs.getBigDecimal("total_debit");
+            rec.totalCredit = rs.getBigDecimal("total_credit");
+            rec.balance = rec.totalDebit.subtract(rec.totalCredit);
+            map.put(rec.id, rec);
+        }, tenantId, startDate, endDate, tenantId);
+
+        return map;
+    }
 
     @GetMapping("/trial-balance")
     public ApiResponse<TrialBalanceDTO> getTrialBalance(
             @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to) {
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String granularity) {
         String tenantId = TenantContext.getTenantId();
         if (tenantId == null || tenantId.isBlank()) tenantId = "1";
-        if (from == null || from.isBlank()) from = "2026-04-01";
-        if (to == null || to.isBlank()) to = "2027-03-31";
+        if (granularity == null || granularity.isBlank()) granularity = "custom";
 
-        List<AccountLedgerEntity> ledgers = ledgerDao.findByTenantIdAndIsActiveTrueOrderByNameAsc(tenantId);
-        List<AccountGroupEntity> groups = groupDao.findByTenantIdOrderByNameAsc(tenantId);
-        Map<Long, AccountGroupEntity> groupMap = groups.stream()
-                .collect(Collectors.toMap(AccountGroupEntity::getId, g -> g, (a, b) -> a));
+        boolean dateRangeCorrected = false;
+        if (from == null || from.isBlank()) from = "2024-04-01";
+        if (to == null || to.isBlank()) to = LocalDate.now().toString();
 
-        Map<Long, BigDecimal> debitMap = new HashMap<>();
-        Map<Long, BigDecimal> creditMap = new HashMap<>();
-
-        List<VoucherEntity> vouchers = voucherDao.findByTenantId(tenantId);
-        LocalDate startDt = LocalDate.parse(from);
-        LocalDate endDt = LocalDate.parse(to);
-
-        for (VoucherEntity v : vouchers) {
-            if (v.getVoucherDate() == null) continue;
-            if (v.getVoucherDate().isBefore(startDt) || v.getVoucherDate().isAfter(endDt)) continue;
-            if (v.getItems() != null) {
-                for (VoucherItemEntity vi : v.getItems()) {
-                    if (vi.getLedgerId() == null) continue;
-                    BigDecimal amt = vi.getAmount() != null ? vi.getAmount() : BigDecimal.ZERO;
-                    BigDecimal d = "DEBIT".equalsIgnoreCase(vi.getEntryType()) ? amt : BigDecimal.ZERO;
-                    BigDecimal c = "CREDIT".equalsIgnoreCase(vi.getEntryType()) ? amt : BigDecimal.ZERO;
-                    debitMap.merge(vi.getLedgerId(), d, BigDecimal::add);
-                    creditMap.merge(vi.getLedgerId(), c, BigDecimal::add);
-                }
-            }
+        if (from.compareTo(to) > 0) {
+            to = from;
+            dateRangeCorrected = true;
         }
 
-        BigDecimal grandDebit = BigDecimal.ZERO;
-        BigDecimal grandCredit = BigDecimal.ZERO;
+        // 1. Determine inception date
+        String inceptionSql = "SELECT MIN(voucher_date) FROM vouchers WHERE tenant_id = ?";
+        String inceptionDate = null;
+        try {
+            LocalDate incDate = jdbcTemplate.queryForObject(inceptionSql, LocalDate.class, tenantId);
+            if (incDate != null) inceptionDate = incDate.toString();
+        } catch (Exception ignored) {}
+        if (inceptionDate == null) inceptionDate = "1900-01-01";
 
-        Map<String, List<TrialBalanceDTO.TrialBalanceRow>> rowsByGroup = new LinkedHashMap<>();
-        for (AccountLedgerEntity l : ledgers) {
-            AccountGroupEntity g = groupMap.get(l.getGroupId());
-            String gName = g != null ? g.getName() : "General";
+        // 2. Fetch period balances
+        Map<Long, LedgerBalanceRecord> periodBalances = fetchPostedBalances(tenantId, from, to);
 
-            BigDecimal d = debitMap.getOrDefault(l.getId(), BigDecimal.ZERO);
-            BigDecimal c = creditMap.getOrDefault(l.getId(), BigDecimal.ZERO);
+        // 3. Fetch prior balances if from > inception
+        Map<Long, LedgerBalanceRecord> priorBalances = Collections.emptyMap();
+        if (from.compareTo(inceptionDate) > 0) {
+            LocalDate dayBefore = LocalDate.parse(from).minusDays(1);
+            priorBalances = fetchPostedBalances(tenantId, inceptionDate, dayBefore.toString());
+        }
 
-            BigDecimal op = l.getOpeningBalance() != null ? l.getOpeningBalance() : BigDecimal.ZERO;
-            if (op.compareTo(BigDecimal.ZERO) >= 0) {
-                d = d.add(op);
-            } else {
-                c = c.add(op.abs());
+        // 4. Sum manual opening balances on P&L accounts (Income/Expense) to fold into ledger 3900
+        BigDecimal plOpeningAdjustment = BigDecimal.ZERO;
+        String plSql = """
+            SELECT COALESCE(SUM(al.opening_balance), 0)
+            FROM account_ledgers al
+            JOIN account_groups ag ON ag.id = al.group_id
+            WHERE al.tenant_id = ? AND ag.nature IN ('INCOME', 'EXPENSE')
+        """;
+        try {
+            BigDecimal plAdj = jdbcTemplate.queryForObject(plSql, BigDecimal.class, tenantId);
+            if (plAdj != null) plOpeningAdjustment = plAdj;
+        } catch (Exception ignored) {}
+
+        List<TrialBalanceDTO.TrialBalanceRow> rows = new ArrayList<>();
+        BigDecimal totOpDr = BigDecimal.ZERO;
+        BigDecimal totOpCr = BigDecimal.ZERO;
+        BigDecimal totDr = BigDecimal.ZERO;
+        BigDecimal totCr = BigDecimal.ZERO;
+        BigDecimal totClDr = BigDecimal.ZERO;
+        BigDecimal totClCr = BigDecimal.ZERO;
+
+        for (LedgerBalanceRecord r : periodBalances.values()) {
+            boolean isPL = "INCOME".equalsIgnoreCase(r.nature) || "EXPENSE".equalsIgnoreCase(r.nature);
+            BigDecimal priorBal = BigDecimal.ZERO;
+            if (priorBalances.containsKey(r.id)) {
+                priorBal = priorBalances.get(r.id).balance;
             }
 
-            BigDecimal net = d.subtract(c);
-            grandDebit = grandDebit.add(d);
-            grandCredit = grandCredit.add(c);
+            BigDecimal opBal = r.openingBalance != null ? r.openingBalance : BigDecimal.ZERO;
+            BigDecimal opening = isPL ? BigDecimal.ZERO : opBal.add(priorBal);
 
-            rowsByGroup.computeIfAbsent(gName, k -> new ArrayList<>()).add(
-                    TrialBalanceDTO.TrialBalanceRow.builder()
-                            .id(l.getId())
-                            .code(l.getCode())
-                            .name(l.getName())
-                            .debit(d)
-                            .credit(c)
-                            .netBalance(net)
-                            .build()
-            );
+            if ("3900".equals(r.code)) {
+                opening = opening.add(plOpeningAdjustment);
+            }
+
+            BigDecimal periodBal = r.balance != null ? r.balance : BigDecimal.ZERO;
+            BigDecimal closing = opening.add(periodBal);
+
+            BigDecimal openingDr = opening.compareTo(BigDecimal.ZERO) > 0 ? opening : BigDecimal.ZERO;
+            BigDecimal openingCr = opening.compareTo(BigDecimal.ZERO) < 0 ? opening.abs() : BigDecimal.ZERO;
+
+            BigDecimal debit = periodBal.compareTo(BigDecimal.ZERO) > 0 ? periodBal : BigDecimal.ZERO;
+            BigDecimal credit = periodBal.compareTo(BigDecimal.ZERO) < 0 ? periodBal.abs() : BigDecimal.ZERO;
+
+            BigDecimal closingDr = closing.compareTo(BigDecimal.ZERO) > 0 ? closing : BigDecimal.ZERO;
+            BigDecimal closingCr = closing.compareTo(BigDecimal.ZERO) < 0 ? closing.abs() : BigDecimal.ZERO;
+
+            totOpDr = totOpDr.add(openingDr);
+            totOpCr = totOpCr.add(openingCr);
+            totDr = totDr.add(debit);
+            totCr = totCr.add(credit);
+            totClDr = totClDr.add(closingDr);
+            totClCr = totClCr.add(closingCr);
+
+            rows.add(TrialBalanceDTO.TrialBalanceRow.builder()
+                    .id(r.id)
+                    .code(r.code)
+                    .name(r.name)
+                    .primaryGroupName(r.primaryGroupName != null ? r.primaryGroupName : "General")
+                    .secondaryGroupName(r.secondaryGroupName)
+                    .nature(r.nature)
+                    .type(r.nature != null ? r.nature.toLowerCase() : "")
+                    .openingDr(openingDr.setScale(2, RoundingMode.HALF_UP))
+                    .openingCr(openingCr.setScale(2, RoundingMode.HALF_UP))
+                    .debit(debit.setScale(2, RoundingMode.HALF_UP))
+                    .credit(credit.setScale(2, RoundingMode.HALF_UP))
+                    .closingDr(closingDr.setScale(2, RoundingMode.HALF_UP))
+                    .closingCr(closingCr.setScale(2, RoundingMode.HALF_UP))
+                    .netBalance(closing.setScale(2, RoundingMode.HALF_UP))
+                    .build());
         }
+
+        TrialBalanceDTO.TrialBalanceTotals totals = TrialBalanceDTO.TrialBalanceTotals.builder()
+                .openingDr(totOpDr.setScale(2, RoundingMode.HALF_UP))
+                .openingCr(totOpCr.setScale(2, RoundingMode.HALF_UP))
+                .debit(totDr.setScale(2, RoundingMode.HALF_UP))
+                .credit(totCr.setScale(2, RoundingMode.HALF_UP))
+                .closingDr(totClDr.setScale(2, RoundingMode.HALF_UP))
+                .closingCr(totClCr.setScale(2, RoundingMode.HALF_UP))
+                .build();
+
+        // Also build groups for legacy compatibility
+        Map<String, List<TrialBalanceDTO.TrialBalanceRow>> rowsByGroup = rows.stream()
+                .collect(Collectors.groupingBy(TrialBalanceDTO.TrialBalanceRow::getPrimaryGroupName, LinkedHashMap::new, Collectors.toList()));
 
         List<TrialBalanceDTO.TrialBalanceGroup> groupDTOs = new ArrayList<>();
         for (Map.Entry<String, List<TrialBalanceDTO.TrialBalanceRow>> e : rowsByGroup.entrySet()) {
@@ -106,6 +212,7 @@ public class ReportController {
             BigDecimal grpC = e.getValue().stream().map(TrialBalanceDTO.TrialBalanceRow::getCredit).reduce(BigDecimal.ZERO, BigDecimal::add);
             groupDTOs.add(TrialBalanceDTO.TrialBalanceGroup.builder()
                     .groupName(e.getKey())
+                    .nature(e.getValue().isEmpty() ? "" : e.getValue().get(0).getNature())
                     .totalDebit(grpD)
                     .totalCredit(grpC)
                     .accounts(e.getValue())
@@ -115,9 +222,13 @@ public class ReportController {
         TrialBalanceDTO dto = TrialBalanceDTO.builder()
                 .fromDate(from)
                 .toDate(to)
-                .totalDebit(grandDebit)
-                .totalCredit(grandCredit)
-                .isBalanced(grandDebit.compareTo(grandCredit) == 0)
+                .granularity(granularity)
+                .dateRangeCorrected(dateRangeCorrected)
+                .totalDebit(totDr.setScale(2, RoundingMode.HALF_UP))
+                .totalCredit(totCr.setScale(2, RoundingMode.HALF_UP))
+                .isBalanced(totClDr.compareTo(totClCr) == 0)
+                .rows(rows)
+                .totals(totals)
                 .groups(groupDTOs)
                 .build();
 

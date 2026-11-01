@@ -86,6 +86,7 @@ public class VoucherController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String voucherType,
             @RequestParam(required = false) String voucherNo,
+            @RequestParam(required = false) Long ledgerId,
             @RequestParam(required = false, defaultValue = "desc") String dateSort) {
 
         String tenantId = TenantContext.getTenantId();
@@ -125,6 +126,10 @@ public class VoucherController {
         if (toDate != null && !toDate.isBlank()) {
             sql.append("AND v.voucher_date <= ? ");
             params.add(toDate);
+        }
+        if (ledgerId != null) {
+            sql.append("AND vi.ledger_id = ? ");
+            params.add(ledgerId);
         }
         if (voucherType != null && !voucherType.isBlank()) {
             sql.append("AND v.voucher_type = ? ");

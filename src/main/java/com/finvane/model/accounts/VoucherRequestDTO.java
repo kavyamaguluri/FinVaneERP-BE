@@ -32,6 +32,8 @@ public class VoucherRequestDTO {
     private String narration;
     private String referenceNo;
     private BigDecimal totalAmount;
+    @Builder.Default
+    private String status = "posted";
 
     @NotEmpty(message = "Voucher must contain at least two entries")
     @Valid

@@ -179,6 +179,7 @@ public class VoucherServiceImpl implements IVoucherService {
                 .narration(v.getNarration())
                 .referenceNo(v.getReferenceNo())
                 .totalAmount(v.getTotalAmount())
+                .status("posted")
                 .items(itemDtos)
                 .build();
     }

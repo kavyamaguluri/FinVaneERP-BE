@@ -60,7 +60,47 @@ public class DashboardMetricsDTO {
     private List<TopSellingItemDTO> topSellingItems;
     private List<UpcomingInvoiceDTO> upcomingReceivables;
     private List<UpcomingInvoiceDTO> upcomingPayables;
+    private List<LowStockItemDTO> lowStock;
+    private List<StockByLocationDTO> stockByLocation;
+    private TransferStatsDTO transferStats;
     private BudgetSummaryDTO budget;
+    private CfoSummaryDTO cfoSummary;
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class StockByLocationDTO {
+        private Long id;
+        private String code;
+        private String name;
+        private String locationType;
+        private BigDecimal value;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class TransferStatsDTO {
+        private Long cnt;
+        private BigDecimal igst;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class LowStockItemDTO {
+        private Long id;
+        private String name;
+        private String sku;
+        private BigDecimal currentStock;
+        private BigDecimal reorderLevel;
+    }
 
     @Getter
     @Setter
@@ -117,4 +157,50 @@ public class DashboardMetricsDTO {
         private BigDecimal incomeVariancePct;
         private BigDecimal expenseVariancePct;
     }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class CfoSummaryDTO {
+        private String from;
+        private String to;
+        private List<String> narrative;
+        private List<CfoFlagDTO> flags;
+        private CfoKpisDTO kpis;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class CfoFlagDTO {
+        private String tone; // "danger", "warning", "success"
+        private String text;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class CfoKpisDTO {
+        private BigDecimal salesTotal;
+        private BigDecimal purchaseTotal;
+        private BigDecimal grossProfit;
+        private BigDecimal grossMarginPct;
+        private BigDecimal netProfit;
+        private BigDecimal netMarginPct;
+        private BigDecimal cashBank;
+        private BigDecimal debtors;
+        private BigDecimal creditors;
+        private BigDecimal currentRatio;
+        private BigDecimal quickRatio;
+        private BigDecimal dso;
+        private BigDecimal dpo;
+        private BigDecimal cashRunwayMonths;
+    }
 }
+
